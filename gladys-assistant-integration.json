@@ -1,0 +1,49 @@
+{
+  "manifest_version": 1,
+  "type": "device",
+  "name": "De Dietrich",
+  "description": {
+    "en": "Control your De Dietrich heating, hot water and boiler sensors via the De Dietrich cloud.",
+    "fr": "Pilotez chauffage, eau chaude et capteurs de chaudière De Dietrich via le cloud De Dietrich."
+  },
+  "version": "1.0.0",
+  "docker_image": "ghcr.io/callemand/gladys-dedietrich:1.0.0",
+  "gladys_version": ">=4.62.0",
+  "cover_image": "https://raw.githubusercontent.com/callemand/gladys-dedietrich/main/cover.png",
+  "config_schema": [
+    {
+      "key": "email",
+      "type": "string",
+      "label": {
+        "en": "De Dietrich email",
+        "fr": "E-mail De Dietrich"
+      },
+      "description": {
+        "en": "The email address of your De Dietrich account.",
+        "fr": "L'adresse e-mail de votre compte De Dietrich."
+      },
+      "placeholder": {
+        "en": "user@example.com",
+        "fr": "utilisateur@exemple.fr"
+      },
+      "required": true
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": {
+        "en": "De Dietrich password",
+        "fr": "Mot de passe De Dietrich"
+      },
+      "description": {
+        "en": "The password of your De Dietrich account.",
+        "fr": "Le mot de passe de votre compte De Dietrich."
+      },
+      "placeholder": {
+        "en": "••••••••",
+        "fr": "••••••••"
+      },
+      "required": true
+    }
+  ]
+}
