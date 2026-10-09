@@ -1,6 +1,6 @@
 {
   "name": "gladys-dedietrich",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "De Dietrich external integration for Gladys Assistant: control your De Dietrich heating, domestic hot water and read boiler sensors.",
   "type": "module",
