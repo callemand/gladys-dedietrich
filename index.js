@@ -29,9 +29,11 @@ import {
 } from './src/devices/convertDevice.js';
 import { buildClimatePollStates, isClimateSetpoint } from './src/devices/climateZone.js';
 import { buildDhwPollStates, isDhwComfortSetpoint } from './src/devices/hotWaterZone.js';
+import { ZoneChangeTracker } from './src/devices/zoneChangeTracker.js';
 
 const gladys = new GladysIntegration();
 const dedietrich = new DeDietrichClient();
+const zoneTracker = new ZoneChangeTracker();
 
 // Current configuration (hot-reloaded via onConfigUpdated).
 let config = normalizeConfig();
@@ -72,9 +74,21 @@ async function connect() {
   return true;
 }
 
+/**
+ * Fetch the dashboard and log any zone mode / setpoint change, so changes made
+ * outside Gladys (De Dietrich app, thermostat, boiler) show up in the logs.
+ */
+async function getDashboard(options) {
+  const dashboard = await dedietrich.getDashboard(options);
+  for (const line of zoneTracker.observe(dashboard)) {
+    logger.info(line);
+  }
+  return dashboard;
+}
+
 /** Load the dashboard and publish its devices. */
 async function publishDevices() {
-  const dashboard = await dedietrich.getDashboard({ force: true });
+  const dashboard = await getDashboard({ force: true });
   const devices = convertDashboard(gladys, dashboard);
   logger.info(`${devices.length} De Dietrich devices found`);
   await gladys.publishDiscoveredDevices(devices);
@@ -97,8 +111,11 @@ gladys.onSetValue(async (device, feature, value) => {
 
   if (slug === CLIMATE_SLUG && isClimateSetpoint(featureCode)) {
     // The write endpoint depends on the zone's current mode, so read it first.
-    const dashboard = await dedietrich.getDashboard();
+    const dashboard = await getDashboard();
     const zone = findClimateZone(dashboard, id);
+    logger.info(
+      `Gladys command: climate zone ${id} setpoint -> ${value} (current mode ${zone && zone.zoneMode})`,
+    );
     await dedietrich.setClimateSetpoint(id, value, zone && zone.zoneMode);
     return;
   }
@@ -115,7 +132,7 @@ gladys.onSetValue(async (device, feature, value) => {
 gladys.onPoll(async (device) => {
   const { slug, id } = parseExternalId(device.external_id);
   const applianceId = getApplianceId(device);
-  const dashboard = await dedietrich.getDashboard();
+  const dashboard = await getDashboard();
   const appliance = findAppliance(dashboard, applianceId) || {};
   const energy = appliance.capabilityEnergyConsumption
     ? await dedietrich.getEnergyConsumption(applianceId)
