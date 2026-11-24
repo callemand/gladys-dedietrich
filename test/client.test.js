@@ -43,6 +43,7 @@ function loggedInClient(fetchImpl) {
   const client = new DeDietrichClient({ fetchImpl });
   client.accessToken = 'access';
   client.refreshToken = 'refresh';
+  client.accessTokenExpiresAt = Date.now() + 3600 * 1000;
   client.credentials = { email: 'a@b.c', password: 'x' };
   return client;
 }
@@ -81,6 +82,36 @@ test('a 401 triggers a token refresh and one retry', async () => {
     'the client refreshed the token',
   );
   assert.equal(client.accessToken, 'new-access');
+});
+
+test('the token is refreshed before it expires, without waiting for a 401', async () => {
+  const { fetchImpl, requests } = makeFetch({
+    onDashboard: (reqs) => {
+      const last = reqs.at(-1);
+      return last && client.accessToken !== 'new-access' ? jsonResponse(401) : null;
+    },
+  });
+  const client = loggedInClient(fetchImpl);
+  client.accessTokenExpiresAt = Date.now() + 60 * 1000; // within the refresh margin
+
+  await client.getDashboard();
+  const urls = requests.map((r) => r.url);
+  assert.equal(urls.filter((u) => u.includes('/oauth2/v2.0/token')).length, 1);
+  assert.equal(urls.filter((u) => u.endsWith('/homes/dashboard')).length, 1, 'no 401 retry');
+  assert.equal(client.accessToken, 'new-access');
+  assert.ok(client.accessTokenExpiresAt > Date.now() + 30 * 60 * 1000);
+});
+
+test('concurrent requests share a single token refresh', async () => {
+  const { fetchImpl, requests } = makeFetch();
+  const client = loggedInClient(fetchImpl);
+  client.accessTokenExpiresAt = 0;
+
+  await Promise.all([
+    client.getDashboard({ force: true }),
+    client.getEnergyConsumption('appliance'),
+  ]);
+  assert.equal(requests.filter((r) => r.url.includes('/oauth2/v2.0/token')).length, 1);
 });
 
 test('setClimateSetpoint uses temporary-override when the zone follows its schedule', async () => {

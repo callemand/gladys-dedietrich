@@ -26,6 +26,10 @@ const logger = createLogger({ name: 'dedietrich' });
 
 const REQUEST_TIMEOUT_MS = 15000;
 
+// Renew the access token this long before it expires, so requests never hit
+// a 401 in normal operation (the token lives one hour).
+const TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
 export class DeDietrichClient {
   /**
    * @param {object} [options]
@@ -35,6 +39,8 @@ export class DeDietrichClient {
     this.fetchImpl = fetchImpl;
     this.accessToken = null;
     this.refreshToken = null;
+    this.accessTokenExpiresAt = 0;
+    this._refreshing = null;
     this.credentials = null;
     this._dashboard = null;
     this._dashboardAt = 0;
@@ -62,6 +68,8 @@ export class DeDietrichClient {
   logout() {
     this.accessToken = null;
     this.refreshToken = null;
+    this.accessTokenExpiresAt = 0;
+    this._refreshing = null;
     this.credentials = null;
     this._dashboard = null;
     this._dashboardAt = 0;
@@ -156,6 +164,10 @@ export class DeDietrichClient {
     if (!this.isLoggedIn()) {
       throw new Error('De Dietrich is not connected');
     }
+    if (this.credentials && Date.now() >= this.accessTokenExpiresAt - TOKEN_REFRESH_MARGIN_MS) {
+      logger.debug('Access token about to expire, refreshing it...');
+      await this.#reauthenticate();
+    }
     const doRequest = () =>
       this.#fetchJson(path, {
         ...options,
@@ -165,7 +177,7 @@ export class DeDietrichClient {
       return await doRequest();
     } catch (e) {
       if (e.status === 401 && this.credentials) {
-        logger.warn('Session expired, refreshing the token...');
+        logger.warn('Access token rejected (HTTP 401), refreshing it...');
         await this.#reauthenticate();
         return doRequest();
       }
@@ -173,7 +185,17 @@ export class DeDietrichClient {
     }
   }
 
+  /** Refresh the tokens once, even when several requests ask at the same time. */
   async #reauthenticate() {
+    if (!this._refreshing) {
+      this._refreshing = this.#doReauthenticate().finally(() => {
+        this._refreshing = null;
+      });
+    }
+    return this._refreshing;
+  }
+
+  async #doReauthenticate() {
     try {
       const tokens = await b2cRefresh(this.refreshToken, this.fetchImpl);
       this.#storeTokens(tokens);
@@ -191,6 +213,8 @@ export class DeDietrichClient {
     if (tokens.refreshToken) {
       this.refreshToken = tokens.refreshToken;
     }
+    const expiresInMs = (Number(tokens.expiresIn) || 3600) * 1000;
+    this.accessTokenExpiresAt = Date.now() + expiresInMs;
   }
 
   async #fetchJson(path, { method = 'GET', headers = {}, body }) {
